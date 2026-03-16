@@ -18,7 +18,7 @@
     <meta property="og:description" content="We joyfully invite you to celebrate our special day with us. Tap to open the invitation!">
     <meta property="og:site_name" content="Wagma & Cen's Wedding">
     
-    <!-- 🌟 NEW: Explicitly formatted for large WhatsApp Previews -->
+    <!-- Portrait Preview Image Dimensions -->
     <meta property="og:image" itemprop="image" content="https://wedding-wagma-cem-2026.vercel.app/preview.jpg">
     <meta property="og:image:type" content="image/jpeg">
     <meta property="og:image:width" content="630">
@@ -32,19 +32,26 @@
     <meta property="twitter:image" content="https://wedding-wagma-cem-2026.vercel.app/preview.jpg">
 
     <!-- ==============================================================
-         2. EXTERNAL FONTS & ICONS
+         2. EXTERNAL FONTS, ICONS & SUPABASE
          ============================================================== -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400;1,600&family=Montserrat:wght@300;400;500&family=Noto+Nastaliq+Urdu:wght@400;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- 🔥 SUPABASE OFFICIAL CLIENT -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <!-- ==============================================================
          3. MASTER CONFIGURATION (Edit Everything Here!)
          ============================================================== -->
     <script>
         const WEDDING_CONFIG = {
-            FORMSPREE_ENDPOINT: "https://formspree.io/f/mnjgjabj",
+            
+            // 🗄️ SUPABASE DATABASE CONFIGURATION
+            SUPABASE: {
+                url: "https://rqtaakmostvhdvetqiwq.supabase.co",
+                anonKey: "sb_publishable_NHVsKlG5UcBeJj7QDan38A_wYGXJH6a"
+            },
             
             // 🎛️ FEATURE TOGGLES
             FEATURES: {
@@ -555,7 +562,8 @@
                     <h2 id="title-gal" class="font-serif text-primaryText mb-6 tracking-[0.15em] indent-[0.15em] uppercase" style="font-size: var(--fs-section);"></h2>
                     <p id="gal-msg" class="font-light leading-relaxed mb-8 px-2 text-secondaryText" style="font-size: var(--fs-normal);"></p>
                     
-                    <form id="gallery-form" class="space-y-4 max-w-sm mx-auto relative z-20 transition-all duration-500">
+                    <!-- 🔥 Full-width form layout -->
+                    <form id="gallery-form" class="space-y-5 relative z-20 transition-all duration-500 text-start">
                         <div class="relative">
                             <input id="gal-pass-ph" type="password" required class="w-full bg-inputBg text-inputText border-none rounded-xl p-4 pe-12 text-center italic transition-colors focus:ring-1 focus:ring-inputBorderFocus" style="font-size: var(--fs-normal);" placeholder="">
                             <button type="button" id="toggle-pass-btn" class="absolute end-4 top-1/2 transform -translate-y-1/2 cursor-pointer z-30 text-secondaryText hover:text-primaryText transition-colors">
@@ -563,7 +571,7 @@
                                 <i data-lucide="eye-off" width="18" id="icon-eye-off" class="hidden"></i>
                             </button>
                         </div>
-                        <p id="gal-error-msg" class="text-red-500 text-xs hidden italic mt-2"></p>
+                        <p id="gal-error-msg" class="text-red-500 text-xs hidden italic mt-2 text-center"></p>
                         <button type="submit" class="w-full flex items-center justify-center gap-2 bg-buttonBg text-buttonText rounded-xl p-4 uppercase tracking-[0.2em] indent-[0.2em] hover:bg-buttonHover shadow-md cursor-pointer transition-colors" style="font-size: calc(var(--fs-normal) * 0.8);">
                             <i data-lucide="lock" width="16"></i> <span id="btn-unlock"></span>
                         </button>
@@ -686,6 +694,7 @@
                 this.btn.addEventListener('click', () => this.toggle());
 
                 this.audio.addEventListener('timeupdate', () => {
+                    // Only apply natural end-of-track fade if we are not manually fading
                     if (!this.audio.duration || this.fadeInterval) return;
                     const timeLeft = this.audio.duration - this.audio.currentTime;
                     if (timeLeft <= this.config.fadeOutSeconds && timeLeft > 0) {
@@ -711,6 +720,7 @@
             setSource(src) {
                 const wasPlaying = !this.audio.paused && this.isUserIntentional;
                 this.audio.src = src;
+                this.audio.load(); // 🔥 Vital for forcing mobile browsers to fetch new track
                 if (wasPlaying) {
                     this.audio.volume = 1;
                     this.play();
@@ -721,9 +731,18 @@
                 clearInterval(this.fadeInterval);
                 this.fadeInterval = null;
                 if (!this.audio.src || this.audio.src === window.location.href) return;
+                
+                this.audio.volume = 1; // 🔥 Guarantee we aren't starting muted
+                
                 const promise = this.audio.play();
                 if (promise !== undefined) {
-                    promise.then(() => this.updateUI(true)).catch(e => console.log("Auto-play prevented"));
+                    promise.then(() => {
+                        this.updateUI(true);
+                    }).catch(e => {
+                        console.error("Auto-play prevented or file not found:", e);
+                        this.updateUI(false);
+                        this.isUserIntentional = false;
+                    });
                 }
             }
 
@@ -875,10 +894,24 @@
             }
         }
 
+        // ==============================================================
+        // 🚀 SUPABASE FORM CONTROLLER (Separated Tables)
+        // ==============================================================
         class FormController {
             constructor(config) {
-                this.endpoint = config.FORMSPREE_ENDPOINT;
+                this.config = config;
                 this.guestCount = 1;
+                this.supabase = null;
+
+                // Safely initialize Supabase ONLY if you have pasted real keys
+                if (config.SUPABASE.url && !config.SUPABASE.url.includes("PASTE_YOUR")) {
+                    try {
+                        this.supabase = window.supabase.createClient(config.SUPABASE.url, config.SUPABASE.anonKey);
+                    } catch (e) {
+                        console.error("Supabase init error:", e);
+                    }
+                }
+                
                 this.initListeners();
             }
 
@@ -890,7 +923,9 @@
                 
                 const wishForm = document.getElementById('song-wish-form');
                 const rsvpForm = document.getElementById('rsvp-form');
-                if (wishForm) wishForm.addEventListener('submit', (e) => this.submit(e, 'song-submit-btn'));
+                
+                // Route both forms to the new Supabase submit method
+                if (wishForm) wishForm.addEventListener('submit', (e) => this.submit(e, 'song-submit-btn', false));
                 if (rsvpForm) rsvpForm.addEventListener('submit', (e) => this.submit(e, 'rsvp-submit-btn', true));
             }
 
@@ -909,28 +944,71 @@
                 const btn = document.getElementById(btnId);
                 const formData = new FormData(form);
                 const originalHTML = btn.innerHTML;
-                const successMsg = WEDDING_CONFIG.translations[window.App.langController.currentIndex].toastSent;
                 
+                // Get the translated success message
+                const t = WEDDING_CONFIG.translations[window.App.langController.currentIndex];
+                const successMsg = t.toastSent;
+                
+                // Loading State
                 btn.disabled = true;
                 btn.innerHTML = `<i data-lucide="loader" class="animate-spin"></i>`;
                 lucide.createIcons();
 
                 try {
-                    if (this.endpoint.includes("your_id_here")) {
+                    let payload = {};
+                    let targetTable = '';
+
+                    if (isRsvp) {
+                        // 1. Build STRICT RSVP Data format (No empty song/email fields)
+                        const attendanceVal = formData.get('attendance');
+                        const isAttending = (attendanceVal === t.optYes || attendanceVal === "Yes");
+                        
+                        payload = {
+                            name: formData.get('guest_name') || 'Unknown',
+                            isAttending: isAttending,
+                            guestCount: isAttending ? parseInt(formData.get('guest_total') || 1, 10) : 0,
+                            note: formData.get('dietary_restrictions') || '',
+                            isDeleted: false,
+                            timestamp: Date.now()
+                        };
+                        targetTable = 'rsvps'; // Route to RSVP table
+                    } else {
+                        // 2. Build STRICT Music Wish Data format (No empty guest/attendance fields)
+                        payload = {
+                            songTitle: formData.get('song_title') || '',
+                            songArtist: formData.get('song_artist') || '',
+                            isDeleted: false,
+                            timestamp: Date.now()
+                        };
+                        targetTable = 'music_requests'; // Route to the Music table
+                    }
+
+                    // 3. Send to Supabase Database securely
+                    if (!this.supabase) {
+                        // Simulation mode so it doesn't break if you haven't pasted your keys yet
                         await new Promise(r => setTimeout(r, 1000));
-                        ToastService.show(successMsg);
+                        ToastService.show(successMsg + " (Simulation)");
                         form.reset();
                         if (isRsvp) this.adjustGuests(0, true);
                     } else {
-                        const response = await fetch(this.endpoint, { method: 'POST', body: formData, headers: { 'Accept': 'application/json' } });
-                        if (response.ok) {
-                            ToastService.show(successMsg);
-                            form.reset();
-                            if (isRsvp) this.adjustGuests(0, true);
-                        } else ToastService.show("Error sending.");
+                        // Actual database insertion
+                        const { data, error } = await this.supabase
+                            .from(targetTable)
+                            .insert([payload]);
+
+                        if (error) throw error;
+                        
+                        ToastService.show(successMsg);
+                        form.reset();
+                        if (isRsvp) this.adjustGuests(0, true);
                     }
-                } catch (err) { ToastService.show("Network error."); }
+
+                } catch (err) { 
+                    console.error("Supabase Error:", err);
+                    ToastService.show("Error sending. Please try again."); 
+                }
                 
+                // Reset Button State
                 btn.disabled = false;
                 btn.innerHTML = originalHTML;
                 lucide.createIcons();
@@ -1121,10 +1199,10 @@
                         <div class="relative flex items-center justify-between w-full mb-10">
                             <div class="absolute left-1/2 top-1/2 w-6 h-[1px] bg-accentLight transform -translate-x-1/2 -translate-y-1/2"></div>
                             <div class="w-1/2 ${isCol1 ? 'pe-6 sm:pe-8 text-end' : ''}">
-                                ${isCol1 ? `<div class="program-time font-serif text-accent mb-1 ${timeClass}" style="font-size: var(--fs-sub);">${fTime}</div><div class="font-sans font-medium text-primaryText tracking-wide uppercase ${itemClass}" style="font-size: calc(var(--fs-normal)*0.9); padding-left: 0.05em;">${item}</div>` : ''}
+                                ${isCol1 ? `<div class="program-time font-serif text-accent mb-1 ${timeClass}" style="font-size: var(--fs-sub);">${fTime}</div><div class="font-sans font-medium text-primaryText tracking-wide indent-[0.025em] uppercase ${itemClass}" style="font-size: calc(var(--fs-normal)*0.9);">${item}</div>` : ''}
                             </div>
                             <div class="w-1/2 ${!isCol1 ? 'ps-6 sm:ps-8 text-start' : ''}">
-                                ${!isCol1 ? `<div class="program-time font-serif text-accent mb-1 ${timeClass}" style="font-size: var(--fs-sub);">${fTime}</div><div class="font-sans font-medium text-primaryText tracking-wide uppercase ${itemClass}" style="font-size: calc(var(--fs-normal)*0.9); padding-left: 0.05em;">${item}</div>` : ''}
+                                ${!isCol1 ? `<div class="program-time font-serif text-accent mb-1 ${timeClass}" style="font-size: var(--fs-sub);">${fTime}</div><div class="font-sans font-medium text-primaryText tracking-wide indent-[0.025em] uppercase ${itemClass}" style="font-size: calc(var(--fs-normal)*0.9);">${item}</div>` : ''}
                             </div>
                         </div>`;
                 });
